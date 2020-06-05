@@ -2,18 +2,60 @@ version: 2.1
 orbs:
     node: circleci/node@2.1.0
 jobs:
-    build-and-test:
-        executor: node/default
+    ODPAL:
+        environment:
+            NAZWA_IMG: pazindor/ask
+      
+        docker:
+            - image: circleci/buildpack-deps:stretch
         steps:
-        - checkout
-        - node/install-packages
-        - run:
-            command: npm test
+            - checkout
+            - setup_remote_docker
+            - run:
+                name: Build docker image
+                command: cd server && docker build -t $NAZWA_IMG:server .
+            - run:
+                name: Publish docker image to docker hub
+                command: |
+                    echo "$DOCKER_HASLO" | docker login -u "$DOCKER_NAZWA" --password-stdin
+                    docker push $NAZWA_IMG:server
+            - run:
+                name: Build docker image
+                command: cd client && docker build -t $NAZWA_IMG:client .
+            - run:
+                name: Publish docker image to docker hub
+                command: |
+                    echo "$DOCKER_HASLO" | docker login -u "$DOCKER_NAZWA" --password-stdin
+                    docker push $NAZWA_IMG:client
+          
+    TEST_SERVERA:
+        executor: 
+            name: node/default
+        steps:  
+            - checkout
+            - run: cd server && npm install
+            - run: cd server && npm test 
+                
+    TEST_CLIENTA:
+        executor: 
+            name: node/default
+        steps:  
+            - checkout
+            - run: cd client && npm install
+            - run: cd client && npm test     
 workflows:
-    build-test-and-deploy:
+
+    build-and-test:
         jobs:
-        - build-and-test:
-            filters:
-                branches:
-                    ignore:
-                    - dev
+            - TEST_CLIENTA:
+                filters:
+                    branches:
+                        only: master
+            - TEST_SERVERA:
+                filters:
+                    branches:
+                        only: master
+            - ODPAL: 
+                requires: 
+                    - TEST_CLIENTA
+                    - TEST_SERVERA
